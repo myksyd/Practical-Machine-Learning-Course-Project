@@ -1,0 +1,91 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "Mykola Sydorov"
+date: "13 02 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## About
+
+The goal of the project is to predict the manner of performing unilateral dumbbell biceps curls based on data from accelerometers of 6 participants.
+
+### Data Loading
+```
+```{r}
+library(caret)
+library(rattle)
+library(randomForest)
+urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urlTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+TrData<-read.csv(urlTrain, header = T, na.strings = c("", "NA"))
+TeData <- read.csv(urlTest, header = T, na.strings = c("", "NA"))
+
+TrData$classe <- as.factor(TrData$classe) 
+head(TrData)
+```
+
+## Removing variables that are mostly NA
+```{r}
+NAtr <- apply(TrData,2,function(x) {sum(is.na(x))}) 
+TrData <- TrData[,which(NAtr == 0)]
+NAte <- apply(TeData,2,function(x) {sum(is.na(x))}) 
+TeData <- TeData[,which(NAte == 0)]
+```
+
+## Removing nonnumerical variables
+```{r}
+nmrk <- which(lapply(TrData, class) %in% "numeric")
+preObj <-preProcess(TrData[,nmrk],method=c('knnImpute', 'center', 'scale'))
+TrDataN <- predict(preObj, TrData[,nmrk])
+
+TeDataN <-predict(preObj,TeData[,nmrk])
+TrDataN$classe <- TrData$classe
+```
+
+## Removing variables with nearly zero variance
+```{r}
+nzv <- nearZeroVar(TrDataN,saveMetrics=TRUE)
+TrDataN <- TrDataN[, nzv$nzv==FALSE]
+
+nzv <- nearZeroVar(TeDataN,saveMetrics=TRUE)
+TeDataN <- TeDataN[, nzv$nzv==FALSE]
+```
+
+##Cross Validation set
+```{r}
+set.seed(0703)
+inTrain = createDataPartition(TrDataN$classe, p = .75, list=FALSE)
+training = TrDataN[inTrain,]
+testing = TrDataN[-inTrain,]
+```
+
+## Classification tree
+```{r}
+modfit_tree <- train(classe ~ ., method="rpart", data=training)
+fancyRpartPlot(modfit_tree$finalModel)
+```
+
+#Trainig model
+```{r}
+mtry <- tuneRF(training[,-28], training$classe, ntreeTry=500, stepFactor=1.5,improve=0.01, 
+               plot=FALSE, trace=TRUE, dobest=FALSE)
+modfit_rf <- randomForest(classe~.,data=training, mtry=9, ntree=500)
+
+```
+
+##Testing the model on dataset
+```{r}
+pred <- predict(modfit_rf, testing)
+confusionMatrix(pred, testing$classe)
+```
+
+##Prediction
+```{r}
+pred_val <- predict(modfit_rf, TeDataN)
+pred_val
+```
